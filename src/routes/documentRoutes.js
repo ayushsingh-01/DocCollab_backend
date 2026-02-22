@@ -4,18 +4,22 @@ const {
     createDocument,
     getDocuments,
     getDocumentById,
-    deleteDocument
+    updateDocument,
+    deleteDocument,
+    shareDocument
 } = require('../controllers/documentController');
 const { protect } = require('../middlewares/authMiddleware');
+const { authorizeDocument } = require('../middlewares/roleMiddleware');
 
 router.route('/')
     .post(protect, createDocument)
     .get(protect, getDocuments);
 
 router.route('/:id')
-    .get(protect, getDocumentById)
-    .delete(protect, deleteDocument);
+    .get(protect, authorizeDocument('viewer'), getDocumentById)
+    .put(protect, authorizeDocument('editor'), updateDocument)
+    .delete(protect, authorizeDocument('owner'), deleteDocument);
 
-// Optional: you can add a route later for sharing a document
+router.post('/:id/share', protect, authorizeDocument('owner'), shareDocument);
 
 module.exports = router;

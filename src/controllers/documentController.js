@@ -1,4 +1,5 @@
 const Document = require('../models/Document');
+const User = require('../models/User');
 const { createDocumentSchema } = require('../utils/validation');
 
 // @desc    Create a new document
@@ -50,23 +51,11 @@ const getDocuments = async (req, res) => {
 // @access  Private
 const getDocumentById = async (req, res) => {
     try {
-        const document = await Document.findById(req.params.id)
+        // req.document is populated by roleMiddleware
+        // we just need to populate the fields to match original logic
+        const document = await Document.findById(req.document._id)
             .populate('owner', 'username email')
             .populate('sharedWith.userId', 'username email');
-
-        if (!document) {
-            return res.status(404).json({ message: 'Document not found' });
-        }
-
-        // Check if user has access (owner or sharedWith)
-        const isOwner = document.owner._id.toString() === req.user._id.toString();
-        const isShared = document.sharedWith.some(
-            (share) => share.userId._id.toString() === req.user._id.toString()
-        );
-
-        if (!isOwner && !isShared) {
-            return res.status(403).json({ message: 'Not authorized to access this document' });
-        }
 
         res.json(document);
     } catch (error) {
@@ -74,24 +63,72 @@ const getDocumentById = async (req, res) => {
     }
 };
 
+// @desc    Update document content/title
+// @route   PUT /api/documents/:id
+// @access  Private (Editor, Owner)
+const updateDocument = async (req, res) => {
+    try {
+        const { title, content } = req.body;
+        const document = req.document; // from middleware
+
+        if (title !== undefined) document.title = title;
+        if (content !== undefined) document.content = content;
+
+        const updatedDocument = await document.save();
+        res.json(updatedDocument);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+// @desc    Share document and assign role
+// @route   POST /api/documents/:id/share
+// @access  Private (Owner only)
+const shareDocument = async (req, res) => {
+    try {
+        const { email, role } = req.body;
+        const document = req.document;
+
+        if (!['viewer', 'editor'].includes(role)) {
+            return res.status(400).json({ message: 'Invalid role. Must be viewer or editor.' });
+        }
+
+        const userToShareWith = await User.findOne({ email });
+        if (!userToShareWith) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        if (userToShareWith._id.toString() === document.owner.toString()) {
+            return res.status(400).json({ message: 'Cannot share document with its owner' });
+        }
+
+        // Check if already shared
+        const alreadySharedIndex = document.sharedWith.findIndex(
+            (share) => share.userId.toString() === userToShareWith._id.toString()
+        );
+
+        if (alreadySharedIndex !== -1) {
+            // Update role if already shared
+            document.sharedWith[alreadySharedIndex].role = role;
+        } else {
+            document.sharedWith.push({ userId: userToShareWith._id, role });
+        }
+
+        await document.save();
+        res.json({ message: `Document shared with ${userToShareWith.username} as ${role}` });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
 // @desc    Delete document (owner only)
 // @route   DELETE /api/documents/:id
-// @access  Private
+// @access  Private (Owner only)
 const deleteDocument = async (req, res) => {
     try {
-        const document = await Document.findById(req.params.id);
-
-        if (!document) {
-            return res.status(404).json({ message: 'Document not found' });
-        }
-
-        // Check if user is owner
-        if (document.owner.toString() !== req.user._id.toString()) {
-            return res.status(403).json({ message: 'Only the owner can delete this document' });
-        }
+        const document = req.document; // loaded via middleware
 
         await document.deleteOne();
-
         res.json({ message: 'Document removed' });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error: error.message });
@@ -102,5 +139,7 @@ module.exports = {
     createDocument,
     getDocuments,
     getDocumentById,
+    updateDocument,
     deleteDocument,
+    shareDocument,
 };
