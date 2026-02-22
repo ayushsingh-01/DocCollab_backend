@@ -11,7 +11,13 @@ const loginSchema = z.object({
     password: z.string().min(6),
 });
 
+const createDocumentSchema = z.object({
+    title: z.string().min(1).max(100).optional(),
+    content: z.string().optional(),
+});
+
 module.exports = {
     registerSchema,
     loginSchema,
+    createDocumentSchema,
 };
