@@ -11,6 +11,10 @@ const {
 const { protect } = require('../middlewares/authMiddleware');
 const { authorizeDocument } = require('../middlewares/roleMiddleware');
 
+const versionRoutes = require('./versionRoutes');
+
+router.use('/:id/versions', versionRoutes);
+
 router.route('/')
     .post(protect, createDocument)
     .get(protect, getDocuments);
