@@ -34,5 +34,16 @@ const documentSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
+// Cascade delete versions when a document is deleted
+documentSchema.pre('deleteOne', { document: true, query: false }, async function (next) {
+    try {
+        const DocumentVersion = require('./DocumentVersion');
+        await DocumentVersion.deleteMany({ documentId: this._id });
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
+
 const Document = mongoose.model('Document', documentSchema);
 module.exports = Document;
